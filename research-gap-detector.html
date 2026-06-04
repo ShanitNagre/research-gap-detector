@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Research Gap Detector — Powered by Groq</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #16161f;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --accent: #7c6aff;
+    --accent2: #a78bff;
+    --accent-glow: rgba(124,106,255,0.18);
+    --green: #3dffa0;
+    --amber: #ffcc47;
+    --red: #ff6b6b;
+    --teal: #38d9d9;
+    --text: #f0eeff;
+    --muted: #8884aa;
+    --faint: #3a3850;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(124,106,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,106,255,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: -30%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 800px;
+    height: 500px;
+    background: radial-gradient(ellipse, rgba(124,106,255,0.12) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 860px; margin: 0 auto; padding: 0 24px 80px; }
+
+  /* Header */
+  header {
+    padding: 48px 0 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--accent2);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border: 1px solid rgba(124,106,255,0.3);
+    padding: 4px 12px;
+    border-radius: 20px;
+    width: fit-content;
+    background: rgba(124,106,255,0.07);
+  }
+
+  .badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(36px, 6vw, 58px);
+    font-weight: 400;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--accent2);
+  }
+
+  .subtitle {
+    font-size: 15px;
+    color: var(--muted);
+    line-height: 1.6;
+    max-width: 540px;
+    font-weight: 400;
+  }
+
+  /* API Key input */
+  .api-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 28px;
+  }
+
+  .api-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .api-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .api-input:focus { border-color: var(--accent); }
+  .api-input::placeholder { color: var(--faint); }
+
+  /* Main card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+
+  .card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .card-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .char-count {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--faint);
+  }
+
+  textarea {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 20px;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.7;
+    resize: none;
+    min-height: 180px;
+    display: block;
+  }
+
+  textarea::placeholder { color: var(--faint); font-style: italic; }
+
+  /* Example pills */
+  .examples {
+    padding: 0 20px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-top: 1px solid var(--border);
+  }
+
+  .ex-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--faint);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    align-self: center;
+  }
+
+  .ex-pill {
+    font-size: 12px;
+    color: var(--muted);
+    border: 1px solid var(--border2);
+    border-radius: 20px;
+    padding: 4px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: transparent;
+    font-family: 'Syne', sans-serif;
+  }
+
+  .ex-pill:hover {
+    color: var(--accent2);
+    border-color: rgba(124,106,255,0.4);
+    background: rgba(124,106,255,0.07);
+  }
+
+  /* Analyse button */
+  .btn-row { display: flex; gap: 12px; align-items: center; margin-bottom: 32px; }
+
+  .btn-analyse {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 14px 28px;
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    overflow: hidden;
+  }
+
+  .btn-analyse::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+    pointer-events: none;
+  }
+
+  .btn-analyse:hover { transform: translateY(-1px); box-shadow: 0 8px 32px rgba(124,106,255,0.4); }
+  .btn-analyse:active { transform: translateY(0); }
+  .btn-analyse:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .btn-clear {
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--muted);
+    border-radius: 10px;
+    padding: 14px 20px;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn-clear:hover { border-color: var(--border2); color: var(--text); background: var(--surface2); }
+
+  /* Loading state */
+  .loading {
+    display: none;
+    padding: 48px 20px;
+    text-align: center;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .loading.active { display: flex; }
+
+  .spinner {
+    width: 40px; height: 40px;
+    border: 2px solid var(--faint);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-text {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .loading-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+
+  .step {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--faint);
+    opacity: 0;
+    transition: opacity 0.4s, color 0.4s;
+  }
+
+  .step.active { opacity: 1; color: var(--accent2); }
+  .step.done { opacity: 1; color: var(--green); }
+
+  /* Results */
+  #results { display: none; animation: fadeUp 0.5s ease; }
+  #results.show { display: block; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Score banner */
+  .score-banner {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
+
+  .score-ring {
+    position: relative;
+    width: 80px; height: 80px;
+    flex-shrink: 0;
+  }
+
+  .score-ring svg { transform: rotate(-90deg); }
+
+  .score-num {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .score-num span { font-size: 10px; color: var(--muted); }
+
+  .score-meta { flex: 1; }
+
+  .score-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 22px;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .score-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+  /* Section blocks */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .section-head {
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-icon {
+    width: 28px; height: 28px;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .section-body { padding: 20px; }
+
+  /* Gap items */
+  .gap-item {
+    display: flex;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    animation: fadeIn 0.4s ease both;
+  }
+
+  .gap-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .gap-item:first-child { padding-top: 0; }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+
+  .gap-num {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--accent2);
+    min-width: 24px;
+    padding-top: 2px;
+  }
+
+  .gap-content { flex: 1; }
+
+  .gap-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+    line-height: 1.4;
+  }
+
+  .gap-desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+
+  .gap-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  .tag {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+  }
+
+  .tag-method { background: rgba(61,255,160,0.1); color: var(--green); }
+  .tag-field  { background: rgba(124,106,255,0.12); color: var(--accent2); }
+  .tag-urgent { background: rgba(255,107,107,0.1); color: var(--red); }
+
+  /* Citation grid */
+  .cite-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  @media (max-width: 600px) { .cite-grid { grid-template-columns: 1fr; } }
+
+  .cite-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    animation: fadeIn 0.4s ease both;
+  }
+
+  .cite-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; line-height: 1.4; }
+  .cite-reason { font-size: 12px; color: var(--muted); line-height: 1.5; margin-bottom: 8px; }
+
+  .cite-type {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--teal);
+    background: rgba(56,217,217,0.1);
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+  }
+
+  /* Questions list */
+  .q-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+    animation: fadeIn 0.4s ease both;
+  }
+
+  .q-item:last-child { border-bottom: none; }
+  .q-item:first-child { padding-top: 0; }
+
+  .q-arrow { color: var(--accent2); font-size: 16px; padding-top: 1px; }
+  .q-text { font-size: 14px; color: var(--text); line-height: 1.6; font-family: 'Instrument Serif', serif; font-size: 16px; }
+
+  /* Trinka CTA */
+  .trinka-cta {
+    background: linear-gradient(135deg, rgba(124,106,255,0.12), rgba(56,217,217,0.06));
+    border: 1px solid rgba(124,106,255,0.25);
+    border-radius: 14px;
+    padding: 24px 28px;
+    margin-top: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+  }
+
+  .cta-text { flex: 1; }
+  .cta-eyebrow { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 6px; }
+  .cta-title { font-family: 'Instrument Serif', serif; font-size: 20px; color: var(--text); margin-bottom: 6px; }
+  .cta-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+  .cta-btn {
+    background: transparent;
+    border: 1px solid rgba(124,106,255,0.4);
+    color: var(--accent2);
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    text-decoration: none;
+    display: inline-block;
+  }
+
+  .cta-btn:hover { background: rgba(124,106,255,0.12); border-color: var(--accent2); }
+
+  /* Error */
+  .error-box {
+    display: none;
+    background: rgba(255,107,107,0.08);
+    border: 1px solid rgba(255,107,107,0.25);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 13px;
+    color: #ff9a9a;
+    font-family: 'DM Mono', monospace;
+    margin-bottom: 20px;
+  }
+
+  .error-box.show { display: block; }
+
+  /* Footer */
+  footer {
+    margin-top: 60px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .footer-left { font-size: 12px; color: var(--faint); }
+  .footer-left strong { color: var(--muted); }
+  .footer-right { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--faint); }
+
+  /* Groq tag */
+  .powered {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    border: 1px solid var(--border2);
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+
+  .powered-dot { width: 5px; height: 5px; background: var(--green); border-radius: 50%; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="badge">Trinka AI × Research Intelligence</div>
+    <h1>Research <em>Gap</em><br>Detector</h1>
+    <p class="subtitle">Paste your abstract. Get a structured analysis of what's missing, what to cite next, and which research questions your work leaves open.</p>
+  </header>
+
+  <div class="api-row">
+    <div class="powered"><div class="powered-dot"></div> Groq llama-3.3-70b-versatile</div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-label">Abstract / Introduction</span>
+      <span class="char-count" id="charCount">0 / 3000</span>
+    </div>
+    <textarea id="abstractInput" maxlength="3000" placeholder="Paste your research abstract or introduction here...
+
+Example: This study investigates the effect of mindfulness-based interventions on academic burnout among graduate students. Using a randomised controlled design with 120 participants across three universities, we administered an 8-week mindfulness programme and measured burnout, stress, and academic performance outcomes..."></textarea>
+    <div class="examples">
+      <span class="ex-label">Try:</span>
+      <button class="ex-pill" onclick="loadExample('ml')">ML Fairness</button>
+      <button class="ex-pill" onclick="loadExample('climate')">Climate Science</button>
+      <button class="ex-pill" onclick="loadExample('neuro')">Neuroscience</button>
+      <button class="ex-pill" onclick="loadExample('nlp')">NLP / LLMs</button>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn-analyse" id="analyseBtn" onclick="analyse()">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35M11 8v6M8 11h6"/></svg>
+      Detect Research Gaps
+    </button>
+    <button class="btn-clear" onclick="clearAll()">Clear</button>
+  </div>
+
+  <div class="error-box" id="errorBox"></div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">Analysing your abstract...</div>
+    <div class="loading-steps">
+      <div class="step" id="s1">→ Parsing research scope & methodology</div>
+      <div class="step" id="s2">→ Identifying conceptual gaps</div>
+      <div class="step" id="s3">→ Mapping citation opportunities</div>
+      <div class="step" id="s4">→ Generating open research questions</div>
+    </div>
+  </div>
+
+  <div id="results">
+
+    <div class="score-banner" id="scoreBanner">
+      <div class="score-ring">
+        <svg width="80" height="80" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="34" fill="none" stroke="#1e1e2e" stroke-width="7"/>
+          <circle id="scoreArc" cx="40" cy="40" r="34" fill="none" stroke="#7c6aff" stroke-width="7"
+            stroke-linecap="round" stroke-dasharray="213.6" stroke-dashoffset="213.6"/>
+        </svg>
+        <div class="score-num" id="scoreNum">0<span>/10</span></div>
+      </div>
+      <div class="score-meta">
+        <div class="score-title" id="scoreTitle">—</div>
+        <div class="score-desc" id="scoreDesc">—</div>
+      </div>
+    </div>
+
+    <div class="section" id="gapsSection">
+      <div class="section-head">
+        <div class="section-icon" style="background:rgba(124,106,255,0.12)">🔍</div>
+        <span class="section-title" style="color:var(--accent2)">Research Gaps Identified</span>
+      </div>
+      <div class="section-body" id="gapsBody"></div>
+    </div>
+
+    <div class="section" id="citesSection">
+      <div class="section-head">
+        <div class="section-icon" style="background:rgba(56,217,217,0.1)">📎</div>
+        <span class="section-title" style="color:var(--teal)">Recommended Citation Areas</span>
+      </div>
+      <div class="section-body">
+        <div class="cite-grid" id="citesBody"></div>
+      </div>
+    </div>
+
+    <div class="section" id="questionsSection">
+      <div class="section-head">
+        <div class="section-icon" style="background:rgba(255,204,71,0.1)">💡</div>
+        <span class="section-title" style="color:var(--amber)">Open Research Questions</span>
+      </div>
+      <div class="section-body" id="questionsBody"></div>
+    </div>
+
+    <div class="trinka-cta">
+      <div class="cta-text">
+        <div class="cta-eyebrow">Powered by Trinka AI Vision</div>
+        <div class="cta-title">Ready to strengthen your manuscript?</div>
+        <div class="cta-desc">Use Trinka AI to fix grammar, improve academic tone, and run consistency checks — then come back to fill these gaps.</div>
+      </div>
+      <a class="cta-btn" href="https://www.trinka.ai" target="_blank">Try Trinka AI →</a>
+    </div>
+
+  </div>
+
+  <footer>
+    <div class="footer-left">Built by <strong>Shanit Nagre</strong> · Senior PM · IIT Jodhpur · <a href="https://shanitnagre.github.io" target="_blank" style="color:var(--accent2);text-decoration:none">Portfolio</a></div>
+    <div class="footer-right">Concept prototype for Trinka AI × Crimson Interactive</div>
+  </footer>
+
+</div>
+
+<script>
+const EXAMPLES = {
+  ml: `This paper presents a novel fairness-aware machine learning framework for credit scoring in underbanked populations. We address algorithmic bias by incorporating demographic parity constraints into gradient boosting models trained on a dataset of 50,000 loan applications from Southeast Asian microfinance institutions. Our approach achieves a 23% reduction in disparate impact across gender and income brackets while maintaining predictive accuracy within 2% of unconstrained baselines. Results suggest that fairness constraints can be embedded without significant performance trade-offs in low-data regimes.`,
+
+  climate: `We examine the relationship between urban heat island intensity and socioeconomic vulnerability in 42 mid-sized cities across Sub-Saharan Africa between 2010 and 2022. Using Landsat-8 thermal infrared data combined with census-derived vulnerability indices, we find that low-income neighbourhoods experience disproportionate heat exposure — up to 3.8°C higher than affluent districts in the same city. Our analysis controls for green cover, impervious surface density, and building typology. These findings have implications for climate adaptation planning and infrastructure investment targeting.`,
+
+  neuro: `This study investigates the role of the dorsolateral prefrontal cortex (dlPFC) in working memory consolidation during sleep in young adults. Using high-density EEG recordings during a spatial N-back task followed by polysomnography, we demonstrate that slow-wave sleep spindle density in the dlPFC predicts next-day working memory performance (r=0.61, p<0.001, n=48). Targeted memory reactivation using auditory cues during NREM sleep enhanced retention by 18% compared to sham conditions. These results support a role for sleep-dependent synaptic homeostasis in prefrontal memory networks.`,
+
+  nlp: `Large language models have demonstrated emergent capabilities in multi-step reasoning, yet their performance on scientific literature synthesis remains inconsistent. We benchmark seven LLMs including GPT-4, Claude 3, and Llama-3 on a novel dataset of 1,200 systematic review tasks drawn from PubMed abstracts spanning five medical domains. Our evaluation framework introduces a new metric — Synthesis Fidelity Score (SFS) — that penalises hallucinated citations and rewards cross-document inference. We find that chain-of-thought prompting improves SFS by 34% on average but introduces a 2.1x latency overhead, presenting a deployment trade-off for real-time academic writing tools.`
+};
+
+const textarea = document.getElementById('abstractInput');
+const charCount = document.getElementById('charCount');
+
+textarea.addEventListener('input', () => {
+  charCount.textContent = `${textarea.value.length} / 3000`;
+});
+
+function loadExample(key) {
+  textarea.value = EXAMPLES[key];
+  charCount.textContent = `${textarea.value.length} / 3000`;
+  textarea.focus();
+}
+
+function clearAll() {
+  textarea.value = '';
+  charCount.textContent = '0 / 3000';
+  document.getElementById('results').classList.remove('show');
+  document.getElementById('errorBox').classList.remove('show');
+}
+
+function showError(msg) {
+  const box = document.getElementById('errorBox');
+  box.textContent = '⚠ ' + msg;
+  box.classList.add('show');
+}
+
+async function analyse() {
+  const abstract = textarea.value.trim();
+
+  if (abstract.length < 80) { showError('Please enter a more detailed abstract (at least 80 characters).'); return; }
+
+  document.getElementById('errorBox').classList.remove('show');
+  document.getElementById('results').classList.remove('show');
+  document.getElementById('analyseBtn').disabled = true;
+
+  const loading = document.getElementById('loading');
+  loading.classList.add('active');
+
+  const steps = ['s1','s2','s3','s4'];
+  steps.forEach(s => { const el = document.getElementById(s); el.classList.remove('active','done'); });
+
+  let stepIdx = 0;
+  const stepTimer = setInterval(() => {
+    if (stepIdx > 0) document.getElementById(steps[stepIdx-1]).classList.replace('active','done');
+    if (stepIdx < steps.length) { document.getElementById(steps[stepIdx]).classList.add('active'); stepIdx++; }
+  }, 900);
+
+  const prompt = `You are an expert academic research analyst. Analyse the following research abstract and return a JSON object with EXACTLY this structure (no markdown, no extra text, just the raw JSON):
+
+{
+  "novelty_score": <integer 1-10>,
+  "score_label": "<2-4 word label like 'Strong Foundation' or 'Significant Gaps'>",
+  "score_description": "<one sentence describing the overall novelty/completeness>",
+  "gaps": [
+    {
+      "title": "<gap title, 5-10 words>",
+      "description": "<2-3 sentence explanation of the gap>",
+      "tags": [{"label": "<tag text>", "type": "method|field|urgent"}]
+    }
+  ],
+  "citations": [
+    {
+      "area": "<research area or topic to cite>",
+      "reason": "<why this citation area strengthens the paper>",
+      "type": "<e.g. 'Foundational Theory' | 'Methodological' | 'Empirical' | 'Comparative'>"
+    }
+  ],
+  "questions": [
+    "<open research question as a full sentence ending with ?>",
+    "<second question>",
+    "<third question>"
+  ]
+}
+
+Rules:
+- Identify 3-5 genuine research gaps (methodological, conceptual, or empirical)
+- Suggest 4 citation areas that would strengthen the paper
+- Generate 3-4 open research questions the paper leaves unanswered
+- Be specific to the actual content, not generic
+- novelty_score: 8-10 = strong/publishable, 5-7 = moderate gaps, 1-4 = significant gaps
+
+Abstract:
+${abstract}`;
+
+  try {
+    const res = await fetch('https://research-gap.shanitnagre.workers.dev/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        max_tokens: 1800,
+        temperature: 0.4,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || `API error ${res.status}`);
+    }
+
+    const data = await res.json();
+    let raw = data.choices[0].message.content.trim();
+    raw = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(raw);
+
+    clearInterval(stepTimer);
+    steps.forEach(s => document.getElementById(s).classList.replace('active','done'));
+
+    setTimeout(() => {
+      loading.classList.remove('active');
+      renderResults(parsed);
+      document.getElementById('analyseBtn').disabled = false;
+    }, 600);
+
+  } catch(e) {
+    clearInterval(stepTimer);
+    loading.classList.remove('active');
+    document.getElementById('analyseBtn').disabled = false;
+    showError(e.message || 'Something went wrong. Check your API key and try again.');
+  }
+}
+
+function renderResults(d) {
+  // Score ring
+  const score = Math.min(10, Math.max(1, d.novelty_score));
+  const circ = 213.6;
+  const offset = circ - (score / 10) * circ;
+  const arc = document.getElementById('scoreArc');
+  arc.style.strokeDashoffset = circ;
+  const color = score >= 7 ? '#3dffa0' : score >= 5 ? '#ffcc47' : '#ff6b6b';
+  arc.style.stroke = color;
+  document.getElementById('scoreNum').innerHTML = `${score}<span>/10</span>`;
+  document.getElementById('scoreTitle').textContent = d.score_label || 'Analysis Complete';
+  document.getElementById('scoreDesc').textContent = d.score_description || '';
+  setTimeout(() => { arc.style.transition = 'stroke-dashoffset 1s ease'; arc.style.strokeDashoffset = offset; }, 100);
+
+  // Gaps
+  const gapsBody = document.getElementById('gapsBody');
+  gapsBody.innerHTML = '';
+  (d.gaps || []).forEach((g, i) => {
+    const tags = (g.tags || []).map(t => `<span class="tag tag-${t.type}">${t.label}</span>`).join('');
+    gapsBody.innerHTML += `
+      <div class="gap-item" style="animation-delay:${i*0.1}s">
+        <div class="gap-num">0${i+1}</div>
+        <div class="gap-content">
+          <div class="gap-title">${g.title}</div>
+          <div class="gap-desc">${g.description}</div>
+          <div class="gap-tags">${tags}</div>
+        </div>
+      </div>`;
+  });
+
+  // Citations
+  const citesBody = document.getElementById('citesBody');
+  citesBody.innerHTML = '';
+  (d.citations || []).forEach((c, i) => {
+    citesBody.innerHTML += `
+      <div class="cite-card" style="animation-delay:${i*0.1}s">
+        <div class="cite-title">${c.area}</div>
+        <div class="cite-reason">${c.reason}</div>
+        <span class="cite-type">${c.type}</span>
+      </div>`;
+  });
+
+  // Questions
+  const qBody = document.getElementById('questionsBody');
+  qBody.innerHTML = '';
+  (d.questions || []).forEach((q, i) => {
+    qBody.innerHTML += `
+      <div class="q-item" style="animation-delay:${i*0.1}s">
+        <div class="q-arrow">→</div>
+        <div class="q-text">${q}</div>
+      </div>`;
+  });
+
+  document.getElementById('results').classList.add('show');
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+</script>
+</body>
+</html>
